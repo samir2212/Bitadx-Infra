@@ -48,11 +48,23 @@ variable "vpc_cidr_private_b" {
   default = "10.200.12.0/24"
 }
 
-variable "ecs_proxy_image_name" {
-  default = "840128973210.dkr.ecr.eu-central-1.amazonaws.com/proxy-bitadx"
-}
-
 variable "env_file" {
   type    = string
   default = "dev.env"
+}
+
+variable "ecs_proxy" {
+  default = "proxy"
+}
+
+variable "ecs_php_app" {
+  default = "php_app"
+}
+
+variable "proxy_image" {
+  default = "840128973210.dkr.ecr.eu-central-1.amazonaws.com/proxy-dev:master_9664979_1"
+}
+
+variable "php_app_image" {
+  default = "840128973210.dkr.ecr.eu-central-1.amazonaws.com/php_app-dev:master_9664979"
 }

@@ -1,14 +1,14 @@
-resource "aws_acm_certificate" "bitadx" {
-  domain_name       = "bitadx.com"
+resource "aws_acm_certificate" "cert" {
+  domain_name       = "dashboard.bitadx.com"
   validation_method = "DNS"
 
   tags = {
-    Name = "bitadx.com"
+    Name = "dashboard.bitadx.com"
     Environment = "${var.env}"
   }
 
   subject_alternative_names = [
-    "*.bitadx.com",
+    "www.dashboard.bitadx.com",
   ]
 
   options {

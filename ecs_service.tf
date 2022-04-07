@@ -1,26 +1,107 @@
-module "ecs-service-fargate" {
-  source  = "cloudposse/ecs-alb-service-task/aws"
-  version = "0.60.0"
+resource "aws_ecs_task_definition" "php_app_task_definition" {
+  family                   = "${var.env}-${var.project}-${var.ecs_php_app}"
+  task_role_arn            = aws_iam_role.task_role.arn
+  execution_role_arn       = aws_iam_role.task_execution_role.arn
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = "512"
+  memory                   = "1024"
 
-  name                      = "${var.project}-${var.env}"
-  ecs_cluster_arn           = module.ecs.ecs_cluster_arn
-  container_definition_json = "[${module.ecs-container-definition.json_map_encoded}]"
-  vpc_id                    = module.vpc.vpc_id
-  subnet_ids                = module.vpc.private_subnets[*]
 
-  ecs_load_balancers = [
+    container_definitions = jsonencode([
     {
-      target_group_arn = module.alb.target_group_arns[0],
-      container_name   = "proxy-${var.project}-${var.env}",
-      container_port   = 80,
-      elb_name         = null
+      name      = "${var.ecs_proxy}"
+      image     = "${var.proxy_image}"
+      cpu       = 64
+      memory    = 128
+      essential = true
+      portMappings = [
+        {
+          containerPort = 80
+          hostPort      = 80
+        }
+      ]
+      logConfiguration = {
+        logDriver = "awslogs",
+        options = {
+          awslogs-group  = aws_cloudwatch_log_group.proxy_log_group.name,
+          awslogs-region = var.aws_region,
+          awslogs-stream-prefix = "ecs"
+        }
+      }
+      environmentFiles = [
+        {
+          value = "${aws_s3_bucket.env-bucket.arn}/${var.env_file}"
+          "type" : "s3"
+        }
+      ]
     },
-  ]
+    {
+      name      = "${var.ecs_php_app}"
+      image     = "${var.php_app_image}"
+      cpu       = 448
+      memory    = 896
+      essential = true
+      portMappings = [
+        {
+          containerPort = 9000
+          hostPort      = 9000
+        }
+      ]
+      logConfiguration = {
+        logDriver = "awslogs",
+        options = {
+          awslogs-group  = aws_cloudwatch_log_group.php_log_group.name,
+          awslogs-region = var.aws_region,
+          awslogs-stream-prefix = "ecs"
+        }
+      }
+      environmentFiles = [
+        {
+          value = "${aws_s3_bucket.env-bucket.arn}/${var.env_file}"
+          "type" : "s3"
+        }
+      ]
+    }
+  ])
+}
 
-  ignore_changes_desired_count   = false
-  ignore_changes_task_definition = false
-  launch_type                    = "FARGATE"
-  network_mode                   = "awsvpc"
-  security_group_ids             = [module.sg_alb.security_group_id]
-  desired_count                  = 1
+resource "aws_ecs_service" "ecs_service" {
+  name            = var.ecs_php_app
+  cluster         = module.ecs.ecs_cluster_id
+  launch_type     = "FARGATE"
+  desired_count   = 1
+  task_definition = aws_ecs_task_definition.php_app_task_definition.arn
+
+  load_balancer {
+    target_group_arn = module.alb.target_group_arns[0]
+    container_name   = var.ecs_proxy
+    container_port   = 80
+  }
+  network_configuration {
+    security_groups = [ module.sg_alb.security_group_id ]
+    subnets         = module.vpc.private_subnets
+  }
+  tags = {
+    Name        = var.ecs_php_app,
+    Environment = var.env
+  }
+}
+
+resource "aws_cloudwatch_log_group" "php_log_group" {
+  name              = "/ecs/${var.project}/${var.ecs_php_app}"
+  retention_in_days = 90
+
+  tags = {
+    Environment = var.env
+  }
+}
+
+resource "aws_cloudwatch_log_group" "proxy_log_group" {
+  name              = "/ecs/${var.project}/${var.ecs_proxy}"
+  retention_in_days = 90
+
+  tags = {
+    Environment = var.env
+  }
 }

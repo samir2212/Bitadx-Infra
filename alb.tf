@@ -31,14 +31,14 @@ module "alb" {
   enable_cross_zone_load_balancing = true
   listener_ssl_policy_default      = "ELBSecurityPolicy-TLS-1-2-2017-01"
   # Waiting for customer to validate certificate
-  #  https_listeners = [
-  #    {
-  #      port               = 443
-  #      protocol           = "HTTPS"
-  #      certificate_arn    = var.acm_certificate_arn
-  #      target_group_index = 0
-  #    },
-  # ]
+   https_listeners = [
+     {
+       port               = 443
+       protocol           = "HTTPS"
+       certificate_arn    = aws_acm_certificate.cert.arn
+       target_group_index = 0
+     },
+  ]
 
   target_groups = [
     {
@@ -64,12 +64,12 @@ module "alb" {
     {
       port     = 80
       protocol = "HTTP"
-      #      action_type = "redirect"
-      #      redirect = {
-      #        port        = "443"
-      #        protocol    = "HTTPS"
-      #        status_code = "HTTP_301"
-      #      }
+           action_type = "redirect"
+           redirect = {
+             port        = "443"
+             protocol    = "HTTPS"
+             status_code = "HTTP_301"
+           }
     }
   ]
 }

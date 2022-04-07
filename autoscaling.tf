@@ -1,7 +1,7 @@
 resource "aws_appautoscaling_target" "ecs_target" {
   max_capacity       = 4
   min_capacity       = 1
-  resource_id        = "service/${module.ecs.ecs_cluster_name}/${module.ecs-service-fargate.service_name}"
+  resource_id        = "service/${module.ecs.ecs_cluster_name}/${var.ecs_php_app}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
 }
