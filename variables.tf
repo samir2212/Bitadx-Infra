@@ -62,9 +62,9 @@ variable "ecs_php_app" {
 }
 
 variable "proxy_image" {
-  default = "840128973210.dkr.ecr.eu-central-1.amazonaws.com/proxy-dev:master_9664979_1"
+  default = "840128973210.dkr.ecr.eu-central-1.amazonaws.com/proxy-dev:master_278820ba_1"
 }
 
 variable "php_app_image" {
-  default = "840128973210.dkr.ecr.eu-central-1.amazonaws.com/php_app-dev:master_9664979"
+  default = "840128973210.dkr.ecr.eu-central-1.amazonaws.com/php_app-dev:master_278820ba"
 }
