@@ -17,6 +17,7 @@ module "mariadb-master-rds" {
   password                  = data.aws_ssm_parameter.mariadb_rds_master_password.value
   backup_retention_period   = 7
   create_monitoring_role    = true
+  apply_immediately         = true
   deletion_protection       = false
   monitoring_interval  = 60
   monitoring_role_name = "MyRDSMonitoringRole"
