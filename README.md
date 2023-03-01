@@ -138,4 +138,4 @@ No outputs.
   aws s3 cp ~/Desktop/dev.env s3://bitadx-dev-env-bucket/dev.env
   ```
 
-  - Then stop the current **running** taskso changes done on ENV file can take effect by restarting new task.
+  - Then stop the current **running** task so changes done on ENV file can take effect by restarting new task.
