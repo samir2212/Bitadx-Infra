@@ -1,0 +1,98 @@
+#
+## GitLab CI/CD configuration steps:
+#   - the following environment variables should be added as secrets:
+#     AWS_ACCESS_KEY_ID
+#     AWS_SECRET_ACCESS_KEY
+#     AWS_DEFAULT_REGION
+#     SSH_PRIVATE_KEY
+#
+
+variables:
+  DOCKER_HOST: tcp://docker:2375
+  NGINX_DOCKER_IMAGE_URL: 840128973210.dkr.ecr.eu-central-1.amazonaws.com/proxy-dev
+  PHP_APP_DOCKER_IMAGE_URL: 840128973210.dkr.ecr.eu-central-1.amazonaws.com/php_app-dev
+
+stages:
+  - build
+  - publish
+  - deploy
+
+build:
+  stage: build
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_BUILD_REF_NAME == "main"'
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - docker build -f docker/nginx/Dockerfile -t ${NGINX_DOCKER_IMAGE_URL}:pr .
+    - docker build -f docker/php-fpm/Dockerfile -t ${PHP_APP_DOCKER_IMAGE_URL}:pr .
+    - mkdir -p ${CI_PROJECT_DIR}/stage-artifacts
+    - docker save ${NGINX_DOCKER_IMAGE_URL}:pr -o ${CI_PROJECT_DIR}/stage-artifacts/nginx_image.tar
+    - docker save ${PHP_APP_DOCKER_IMAGE_URL}:pr -o ${CI_PROJECT_DIR}/stage-artifacts/php_app_image.tar
+  artifacts:
+    expire_in: 1w
+    paths:
+      - stage-artifacts/
+
+publish:
+  stage: publish
+  dependencies: 
+    - build
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_BUILD_REF_NAME == "main"'
+  image: 
+    name: amazon/aws-cli
+    entrypoint: [""]
+  services:
+    - docker:dind
+  before_script:
+    - amazon-linux-extras install docker
+    - aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+    - aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+    - aws configure set region $AWS_DEFAULT_REGION
+    - docker login -u AWS -p $(aws ecr --region $AWS_DEFAULT_REGION get-login-password) ${NGINX_DOCKER_IMAGE_URL}
+    - export TAG=${CI_COMMIT_REF_NAME}_${CI_COMMIT_SHORT_SHA}
+  script:
+    - docker load < ${CI_PROJECT_DIR}/stage-artifacts/nginx_image.tar
+    - docker tag ${NGINX_DOCKER_IMAGE_URL}:pr ${NGINX_DOCKER_IMAGE_URL}:${TAG}
+    - docker load < ${CI_PROJECT_DIR}/stage-artifacts/php_app_image.tar
+    - docker tag ${PHP_APP_DOCKER_IMAGE_URL}:pr ${PHP_APP_DOCKER_IMAGE_URL}:${TAG}
+    - docker push ${NGINX_DOCKER_IMAGE_URL}:${TAG}
+    - docker push ${PHP_APP_DOCKER_IMAGE_URL}:${TAG}
+
+deploy:
+  stage: deploy
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_BUILD_REF_NAME == "main"'
+  image:
+    name: "hashicorp/terraform"
+    entrypoint: [""]
+  before_script:
+    - eval $(ssh-agent -s)
+    - echo $SSH_PRIVATE_KEY | base64 -d | ssh-add -
+    - mkdir ~/.ssh && chmod 700 ~/.ssh && ssh-keyscan -H gitlab.com >> ~/.ssh/known_hosts
+    - git config --global user.email "bitadx-ci@gitlab-ci.com"
+    - git config --global user.name "BitaDX GitLab CI"
+    - git clone git@gitlab.com:devops1806/bitadx/bitadx-infra.git terraform-infra
+    - cd terraform-infra
+    - export TAG=${CI_COMMIT_REF_NAME}_${CI_COMMIT_SHORT_SHA}
+    - export OLD_TAG_NGINX=$(cat variables.tf | grep "${NGINX_DOCKER_IMAGE_URL}" | cut -d":" -f2 | sed 's/"//g')
+    - export OLD_TAG_PHP=$(cat variables.tf | grep "${PHP_APP_DOCKER_IMAGE_URL}" | cut -d":" -f2 | sed 's/"//g')
+  script:
+    - sed -i "s~$OLD_TAG_NGINX~$TAG~g" variables.tf
+    - sed -i "s~$OLD_TAG_PHP~$TAG~g" variables.tf
+    - git add variables.tf
+    - git commit -m "Latest version '$TAG' deployment"
+    - terraform init -input=false
+    - terraform validate
+    - terraform plan
+    - terraform apply -auto-approve
+    - echo success > status.txt
+  after_script:
+    - eval $(ssh-agent -s)
+    - echo $SSH_PRIVATE_KEY | base64 -d | ssh-add -
+    - cd terraform-infra
+    - if [ -f status.txt ]; then git push; else git reset --hard origin/main && terraform init -input=false && terraform plan; fi
+
